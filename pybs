@@ -1,0 +1,235 @@
+#!/usr/bin/python
+
+import os
+import re
+import sys
+import time
+
+TOP_DIR = os.getcwd()
+SRC_DIR = TOP_DIR + '/src/'
+USRC_DIR = TOP_DIR + '/usrc/'
+BUILD_DIR = TOP_DIR + '/build/'
+SCRIPTS_DIR = TOP_DIR + '/scripts/'
+
+
+# default flags for CC,AS, and LD
+CFLAGS = ' -W -Wall -ffreestanding -fno-builtin -nostdinc -fomit-frame-pointer '
+CFLAGS += ' -I%s ' % (SRC_DIR + 'include/') # include directory
+#CFLAGS += ' -O2 ' # optimzation
+AFLAGS = ' '
+LDFLAGS = ' -dN '
+
+#### util ####
+def fatal(s):
+    print "FATAL: ", s
+    sys.exit(-1)
+
+###################
+#### CONFIGURE ####
+###################
+
+# walk through each target directory and enumerate all targets we can build for
+def enumerate_targets():
+    # Dictionary that maps the names of targets to their build.conf file
+    # (ex. 'c1720' -> '/path/to/src/targets/XPC860/build.conf'
+    targets = {}
+    for root,dirs,files in os.walk(SRC_DIR + 'target/'):
+        for f in files:
+            if f == "build.conf":
+                path = os.path.join(root,f) # full path to this build.conf file
+                data = open(path).read()
+                # find the line that contains targets
+                # (ex. TARGETS = ['c1000','c1600'])
+                target_re = re.compile(" *TARGETS[ *=|=]")
+                for line in data.split("\n"):
+                    if re.search(target_re,line):
+                        for t in eval(line.split('=')[1]):
+                            targets[t] = path
+    return targets
+
+# build file 'config'
+def configure():
+    # Determine target
+    targets = enumerate_targets()
+    print 'available targets: %s' % (','.join(targets.keys()))
+    target = raw_input('please select target: ')
+    if target not in targets.keys():
+        print 'Invalid target \'%s\'' % target
+        return
+
+    
+    # set up build directory
+    if not os.path.isdir(BUILD_DIR):
+        try: os.mkdir(BUILD_DIR)
+        except:
+            fatal('could not create build directory')
+
+    cf = open(BUILD_DIR + '/config',"w")
+    cf.write("TARGET=\'%s\'\n" % target)
+    cf.write("BUILD_CONF=\'%s\'\n" % targets[target])
+    cf.write("SRC_DIR=\'%s\'\n" % SRC_DIR)
+    cf.write("TARGET_DIR=\'%s\'\n" % targets[target][:-10])
+
+    # default flags
+    cf.write("CFLAGS=\'%s\'\n" % CFLAGS)
+    cf.write("AFLAGS=\'%s\'\n" % AFLAGS)
+    cf.write("LDFLAGS=\'%s\'\n" % LDFLAGS)
+
+    cf.close()
+
+    # remove old objs
+    os.popen("rm -rf %s" % BUILD_DIR + 'objs')
+
+
+###############
+#### BUILD ####
+###############
+
+def compile(file_name):
+    print ' CC %s' % file_name[len(SRC_DIR):]
+    ret = os.system(CC + ' -c ' + CFLAGS + file_name)
+    if ret == 256:
+        # an error occured
+        sys.exit(-1)
+    os.system(CC + ' -S ' + CFLAGS + file_name) # product asm output
+
+def assemble(file_name):
+    print ' AS %s' % file_name[len(SRC_DIR):]
+    output_name = file_name.split(os.sep)[-1][:-2] + '.o' # (ex. boot.S -> boot.o)
+    ret = os.system(CC + CFLAGS + ' -E -D__LANGUAGE_ASSEMBLY__ ' + file_name +' | '+ # preprocess 
+                    AS + AFLAGS + ' -o ' + output_name)                              # assemble
+    if ret == 256:
+        # an error occured
+        sys.exit(-1)
+
+# Compile or Assemble each source file in a directory
+def compile_dir(dir):
+    for flist in os.walk(dir):
+        for file in [file for file in flist[2] if file[-2:] == '.S']:
+            assemble(dir + file)
+        for file in [file for file in flist[2] if file[-2:] == '.c']:
+            compile(dir + file)
+
+def build():
+    start_time = time.time()
+
+    global CFLAGS,AFLAGS,LDFLAGS
+    
+    # directorys and files to compile, if build.conf doesn't modify these
+    # they will be filled with defaults
+    global COMPILE_DIRS, COMPILE_FILES
+    COMPILE_DIRS = []
+    COMPILE_FILES = []
+
+    # exec config files
+    try: execfile(BUILD_DIR + 'config',globals())
+    except:
+        fatal('Cannot exec config file. Try running \'pybs config\' again.')
+    execfile(BUILD_CONF,globals())
+
+
+    print 'building kernel for target \'%s\'' % TARGET
+    ver = os.popen(CC + ' -dumpversion').read()[:-1]
+    arch = os.popen(CC + ' -dumpmachine').read()[:-1]
+    print "using gcc version %s for %s" % (ver, arch)
+
+    # make sure we got all the variables we need from the config files
+    IMAGE_NAME = TARGET + '.bin'
+    CPU_DIR = SRC_DIR + 'cpu/' + CPU + '/'
+
+    # set up our workspace
+    OBJS_DIR = BUILD_DIR + 'objs'
+    if not os.path.isdir(OBJS_DIR):
+        try: os.mkdir(OBJS_DIR)
+        except:
+            fatal('could not create objects directory')
+    BIN_DIR = BUILD_DIR + 'bin' # final binary image lives in here
+    if not os.path.isdir(BIN_DIR):
+        try: os.mkdir(BIN_DIR)
+        except:
+            fatal('could not create bin directory')
+
+    # if build.conf has defined a prebuild() function run it.
+    try: prebuild()
+    except: pass
+
+    # set up the include file symlinks
+    os.system("rm %s" % SRC_DIR + 'include/cpu')
+    os.system("rm %s" % SRC_DIR + 'include/target')
+    os.system("rm %s" % SRC_DIR + 'include/lib')
+    os.system("ln -sf %s %s" % (CPU_DIR + 'include', SRC_DIR + 'include/cpu'))
+    os.system("ln -sf %s %s" % (TARGET_DIR + 'include', SRC_DIR + 'include/target'))
+    os.system("ln -sf %s %s" % (SRC_DIR + 'lib/include/', SRC_DIR + 'include/lib'))
+
+    # define TARGET_IS_<target>
+    CFLAGS += ' -DTARGET_IS_%s ' % TARGET
+
+
+    if not len(COMPILE_DIRS) and not len(COMPILE_FILES):
+        # build.conf did not set up any directorys or 
+        # files to be built -- use defaults.
+        COMPILE_DIRS = [TARGET_DIR,CPU_DIR,'kernel','lib']
+
+    # change all relative paths to absolute paths
+    for i,d in enumerate(COMPILE_DIRS):
+        if d[0] != os.sep:
+            COMPILE_DIRS[i] = SRC_DIR + d
+        if d[-1] != os.sep:
+            COMPILE_DIRS[i] += os.sep
+    for i,f in enumerate(COMPILE_FILES):
+        if f[0] != os.sep:
+            COMPILE_FILES[i] = SRC_DIR + f
+
+    # compile all object files
+    os.chdir(OBJS_DIR)
+    for dir in COMPILE_DIRS:
+        compile_dir(dir)
+    for fi in COMPILE_FILES:
+        if fi[-2:] == '.c':
+            compile(fi)
+        if fi[-2:] == '.S':
+            assemble(fi)
+
+
+    # link files
+    print ' LD -o %s' % IMAGE_NAME
+    LDFLAGS += ' -Map link.map ' # generate map file
+    ret = os.system(LD + LDFLAGS + '*.o -o %s ' % IMAGE_NAME)
+    if ret == 256:
+        # an error occured in linking
+        sys.exit(-1)
+
+    os.chdir(TOP_DIR)
+
+    # copy final bin image to build/bin
+    ret = os.system("cp %s %s" % (OBJS_DIR + '/' + IMAGE_NAME, BIN_DIR))
+    if ret == 256:
+        # image was not created successfully
+        sys.exit(-1)
+
+    # if build.conf has defined a postbuild() function run it.
+    try: postbuild()
+    except: pass
+
+    # print out some build stats
+    print 'image size: %.4gk' % (os.path.getsize(OBJS_DIR + '/' + IMAGE_NAME)/1024.0)
+    print 'built in %.4g seconds' % float(time.time()-start_time)
+
+
+def clean():
+    # remove build objects
+    os.system("rm -rf %s" % BUILD_DIR + 'objs')
+    os.system("rm -rf %s" % BUILD_DIR + 'bin')
+
+if __name__ == '__main__':
+
+    # parse command line args
+    if len(sys.argv) > 1:
+        if sys.argv[1] == 'config':
+            configure()
+        elif sys.argv[1] == 'clean':
+            clean()
+        elif sys.argv[1] == 'rdfs':
+            os.system(SCRIPTS_DIR + 'mkrd.py ' + SRC_DIR + '/include/rd.h ' + USRC_DIR + 'rd')
+    else:
+        build()

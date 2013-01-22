@@ -1,0 +1,13 @@
+1600
+SCC1 is Ethernet - PRAM at 0xC00
+SCC4 is Serial - PRAM at 0xF00
+LXT441 (CSU/DSU) registers at 0x0D040000
+SMC1 is Console UART
+
+Trap #0 will take you to rommon
+
+*** EXCEPTION ***                                                             
+auto vector interrupt level 2                                                 
+program counter = 0x40da0200                                                  
+status register = 0x2704                                                      
+vbr at time of exception = 0x0 

@@ -1,0 +1,24 @@
+This is a hobby project I worked on when I was younger and just
+learning to program with C. It is a small operating system kernel
+designed to run on older embedded Cisco routers with m68k and PPC
+processors.
+
+Warning: the code is unsupported and I haven't touched it in years.
+If you have any questions please shoot me an email.
+
+-kyle
+
+=== Introduction ===
+LinkOS is a network oriented operating system designed to be run on
+networking infrastructure (routers, switches, etc).
+
+=== Supported Hardware ===
+LinkOS currently runs on the following hardware:
+
+  - Cisco M68030 based (2500, 3000 4000 series) routers.
+  - Cisco M68360 based (1000, 1600 series) routers.
+  - Cisco XPC860 based (1700 series) routers.
+
+=== License ===
+LinkOS is open-source software and is released under the BSD license.
+

@@ -1,0 +1,28 @@
+good info -- http://sources-redhat.oc1.mirrors.redwire.net/binutils/ppc-docs/ppc-eabi-calling-sequence
+
+/* read the processor version */
+//unsigned long pv;
+//asm("mfspr %0, 287":"=g"(pv));
+//printk("cpu = %i rev = %i\n",pv>>16,pv&0xffff);
+
+cookie:                                                                      
+01 01 00 0a 8a 41 4d 64 33 00 01 ff 00 b2 00 00                              
+00 00 00 00 00 00 00 00 56 4d 53 07 03 30 35 53                              
+48 06 01 00 00 00 00 00 00 ff ff ff 58 04 49 0c                              
+81 06 ff ff ff ff ff ff ff ff ff ff ff ff ff ff                              
+ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff                              
+ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff                              
+ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff                              
+ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+
+rommon 25 > dump 0x68000000 100                                              
+68000000  8d74 0101 000a 8a41 4d64 3300 01ff 00b2 .t.....AMd3.....           
+68000010  0000 0000 0000 0000 0000 564d 5307 0330 ..........VMS..0           
+68000020  3553 4806 0100 0000 0000 00ff ffff 5804 5SH...........X.           
+68000030  490c 8106 ffff ffff ffff ffff ffff ffff I...............           
+68000040  ffff ffff ffff ffff ffff ffff ffff ffff ................           
+68000050  ffff ffff ffff ffff ffff ffff ffff ffff ................           
+68000060  ffff ffff ffff ffff ffff ffff ffff ffff ................           
+68000070  ffff ffff ffff ffff ffff ffff ffff ffff ................           
+68000080  ffff e99f ffff ffff 0000 0000 0000 0000 ................           
+68000090  2102 defd feed face 0000 0000 0000 0019 !...............   
